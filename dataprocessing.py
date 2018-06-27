@@ -24,8 +24,8 @@ es = Elasticsearch(
 def bulk_insert(datas):
     actions = [
         {
-            "_index": "bills",
-            "_type": "billl",
+            "_index": "korbill",
+            "_type": "bill",
             "_id": data['id'],
             "_source": data
         }

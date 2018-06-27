@@ -9,7 +9,7 @@ from collections import OrderedDict
 import json
 import os
 from lxml import html
-
+import codecs
 import warnings
 
 PageFlag = 1
@@ -20,7 +20,7 @@ warnings.filterwarnings("ignore")
 def getListsMultiProcess():
 
     pp = Pool(processes=10)
-    page_idx = 1260
+    page_idx = 12
     q = queue.Queue()
     result_list = []
 
@@ -44,7 +44,7 @@ def getListsMultiProcess():
     return result_list
 
 def getLists():
-    page_idx = 1260
+    page_idx = 10
     q = queue.Queue()
 
     while page_idx >= 1:
@@ -230,11 +230,26 @@ def getFootchairs(serial):
 def makeData(target):
     data = getOne(target['serial'])
     data = OrderedDict(data)
-
     with open((os.getcwd()) + "/result/" + str(data['id']) + ".json", "w", encoding='UTF-8') as make_file:
         json.dump(data, make_file, ensure_ascii=False, indent=3)
+    print("[scrap " + str(target['id']) + ' success]')
 
     return data
+
+def files_bulk():
+    ts = []
+    for root, dirs, files in os.walk('result/'):
+        ts = files
+    ts.remove('1.txt')
+
+    o = []
+    for ttt in ts:
+        s = codecs.open('result/' + ttt, 'r', 'utf-8')
+        f = json.loads(s.read())
+        jso = OrderedDict(f)
+        o.append(jso)
+    print("[bulk start]")
+    dataprocessing.bulk_insert(o)
 
 def main():
     targets = getListsMultiProcess()
@@ -244,7 +259,12 @@ def main():
 
     pp = Pool(processes=10)
     while len(targets) != 0:
+        print(len(targets))
         datas = []
+        if len(targets) == 1:
+            data = makeData(targets[0])
+            outputs.append(data)
+            break
 
         if len(targets) - 10 > 0:
             datas = pp.map(makeData, targets[:10])
@@ -258,6 +278,7 @@ def main():
                 targets.remove(target)
 
         outputs.extend(datas)
+
     pp.close()
 
     print("[Bulk Insert Start]")
