@@ -1,6 +1,7 @@
 from multiprocessing.pool import Pool
 import queue
 from urllib.request import Request, urlopen
+import http
 from bs4 import BeautifulSoup
 from getSimsa import scraping_simsa_by_serial as getSimsas
 import dataprocessing
@@ -21,9 +22,10 @@ def getListsMultiProcess():
     pp = Pool(processes=10)
     page_idx = 1260
     q = queue.Queue()
+    result_list = []
 
     while page_idx >= 1:
-        if page_idx - 10 >= 0:
+        if page_idx - 10 > 0:
             datas = pp.map(getList, list(range(page_idx - 10, page_idx)))
         else:
             datas = pp.map(getList, list(range(1, page_idx)))
@@ -32,13 +34,14 @@ def getListsMultiProcess():
             if x == None:
                 continue
             for xx in x:
-                q.put(xx)
-
+                # q.put(xx)
+                result_list.append(xx)
         page_idx -= 10
 
     pp.close()
 
-    return q
+    # return q
+    return result_list
 
 def getLists():
     page_idx = 1260
@@ -53,7 +56,11 @@ def getLists():
 def getList(page_idx):
     print("[Scraping] 입법예고사이트 page = " + str(page_idx))
     url = 'http://pal.assembly.go.kr/law/endListView.do?tmpAge=20&tmpCurrCommitteeId=&tmpCondition=0&tmpKeyword=&currCommitteeId=&age=20&searchCondition=&searchKeyword=&closedCondition=1&pageNo=' + str(page_idx) if PageFlag == 1 else '"http://pal.assembly.go.kr/law/listView.do?tmpCurrCommitteeId=&tmpCondition=0&tmpKeyword=&currCommitteeId=&searchCondition=&searchKeyword=&closedCondition=0&pageNo='+str(page_idx)
-    source = request_return(url)
+    try:
+        source = request_return(url)
+    except http.client.HTTPException as e:
+        print(e)
+        return []
 
     rows = BeautifulSoup(source).select('tr')[1:-1]
 
@@ -82,8 +89,12 @@ def getOne(serial):
     one = {'serial': serial}
     one['url'] = 'http://pal.assembly.go.kr/law/endReadView.do?lgsltpaId=' + one[
         'serial'] if PageFlag == 1 else 'http://pal.assembly.go.kr/law/readView.do?lgsltpaId=' + one['serial']
+    try:
+        source = request_return(one['url'])
+    except http.client.HTTPException as e:
+        print(e)
+        return []
 
-    source = request_return(one['url'])
     soup = BeautifulSoup(source)
 
     one['id'] = getId(soup)
@@ -198,7 +209,11 @@ def getStatus(serial):
 
 def getFootchairs(serial):
     url = "http://likms.assembly.go.kr/bill/coactorListPopup.do?billId=" + serial
-    content = BeautifulSoup(request_return(url))
+    try:
+        content = BeautifulSoup(request_return(url))
+    except http.client.HTTPException as e:
+        print(e)
+        return []
     members = content.find_all('a')
 
     res = []
@@ -212,18 +227,38 @@ def getFootchairs(serial):
     return res
 #######################
 
+def makeData(target):
+    data = getOne(target['serial'])
+    data = OrderedDict(data)
+
+    with open((os.getcwd()) + "/result/" + str(data['id']) + ".json", "w", encoding='UTF-8') as make_file:
+        json.dump(data, make_file, ensure_ascii=False, indent=3)
+
+    return data
+
 def main():
-    q = getListsMultiProcess()
+    targets = getListsMultiProcess()
     outputs = []
 
-    while not q.empty():
-        one = q.get()
-        data = getOne(one['serial'])
-        data = OrderedDict(data)
+    print("[Make Json files]")
 
-        with open((os.getcwd()) + "/result/" + str(data['id']) + ".json", "w", encoding='UTF-8') as make_file:
-            json.dump(data, make_file, ensure_ascii=False, indent=3)
+    pp = Pool(processes=10)
+    while len(targets) != 0:
+        datas = []
 
-        outputs.append(data)
+        if len(targets) - 10 > 0:
+            datas = pp.map(makeData, targets[:10])
+            t = targets[:10]
+            for target in t:
+                targets.remove(target)
+        else:
+            datas = pp.map(makeData, targets[:-1])
+            t = targets[:-1]
+            for target in t:
+                targets.remove(target)
 
+        outputs.extend(datas)
+    pp.close()
+
+    print("[Bulk Insert Start]")
     dataprocessing.bulk_insert(outputs)
