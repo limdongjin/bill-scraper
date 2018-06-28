@@ -110,6 +110,7 @@ def getOne(serial):
     one['status'] = getStatus(one['serial'])
     one['simsas'] = getSimsas(one['serial'])
     one['footchairs'] = getFootchairs(one['serial'])
+    one['main_sentence'] = getMainSentence(one['summary'])
 
     return one
 
@@ -177,6 +178,21 @@ def getHwp(soup):
 
 def getSummary(soup):
     return soup.select('#con > div.sub_board_w > div.board_comment > p')[1].text.strip().replace('\n', '<br>')
+
+def getMainSentence(summary):
+    subSummaryList = []
+
+    subSummaryList = summary.split('.')
+
+    for targetStr in subSummaryList:
+        if targetStr.find('것임') != -1:
+            return targetStr
+
+    for targetStr in subSummaryList:
+        if targetStr.find('하고자') != -1:
+            return targetStr
+
+    return ''
 
 def getStatus(serial):
     url = "http://likms.assembly.go.kr/bill/billDetail.do?billId=" + serial
